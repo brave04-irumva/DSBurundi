@@ -1,12 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-/**
- * Creates a server-side Supabase connection instance for API routes.
- * Dynamically handles server cookie contexts safely.
- */
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  // CRITICAL FIX: Explicitly await the cookies Promise so TypeScript resolves the type definition correctly
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,13 +16,13 @@ export function createClient() {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, options),
             );
           } catch {
-            // The setAll method can be ignored if called from a Server Component
+            // The Next.js framework handles cookie updates cleanly through middleware routing structures
           }
         },
       },
-    }
+    },
   );
 }
