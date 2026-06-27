@@ -28,30 +28,33 @@ export default function MainDashboardOverview() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState("");
 
+  // Financial Auditing local operation processing states
+  const [processingId, setProcessingId] = useState<string | null>(null);
+
   // Subjects configuration definitions
   const coreSubjects = ["mathematics", "english", "science", "kirundi"];
 
   useEffect(() => {
-    async function fetchDashboardMetrics() {
-      try {
-        const response = await fetch("/api/dashboard");
-        if (!response.ok)
-          throw new Error("Failed to pull treasury metrics token stream.");
-
-        const data = await response.json();
-        if (data.success) {
-          setMetrics(data.summary);
-          setSubmissions(data.recentSubmissions);
-        }
-      } catch (err: any) {
-        setError(err.message || "Metrics parsing error.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
     fetchDashboardMetrics();
   }, [currentTab]);
+
+  async function fetchDashboardMetrics() {
+    try {
+      const response = await fetch("/api/dashboard");
+      if (!response.ok)
+        throw new Error("Failed to pull treasury metrics token stream.");
+
+      const data = await response.json();
+      if (data.success) {
+        setMetrics(data.summary);
+        setSubmissions(data.recentSubmissions || []);
+      }
+    } catch (err: any) {
+      setError(err.message || "Metrics parsing error.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   // Load active grading ledger roster states dynamically when entering the grades context view
   useEffect(() => {
@@ -68,7 +71,6 @@ export default function MainDashboardOverview() {
       const data = await response.json();
       if (data.success) {
         setRoster(data.roster);
-        // Fallback placeholder selection initialization
         if (data.roster.length > 0 && !selectedStudent) {
           loadStudentIntoWorkstation(data.roster[0]);
         }
@@ -86,7 +88,6 @@ export default function MainDashboardOverview() {
     setSelectedStudent(student);
     setEditComments(student.comments);
 
-    // Build out structure map blocks for all core subjects securely
     const localizedMarks: any = {};
     coreSubjects.forEach((subject) => {
       localizedMarks[subject] = {
@@ -115,14 +116,12 @@ export default function MainDashboardOverview() {
     }));
   };
 
-  // 📝 Save Evaluation Formulator Handler
   const handleSaveReportCard = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSaveSuccess(false);
 
     try {
-      // Formulate final weighted averages dynamically (Test: 40%, Exam: 60%)
       const compiledMarks: any = {};
       coreSubjects.forEach((subject) => {
         const testMark = parseInt(editMarks[subject]?.test) || 0;
@@ -154,7 +153,6 @@ export default function MainDashboardOverview() {
 
       setSaveSuccess(true);
 
-      // Refresh local roster states silently to stay in sync with cloud storage models
       const updatedRoster: any = roster.map((item: any) => {
         if (item.studentUuid === selectedStudent.studentUuid) {
           return { ...item, marks: compiledMarks, comments: editComments };
@@ -166,6 +164,46 @@ export default function MainDashboardOverview() {
       setError(
         err.message || "Failed to deploy evaluation parameters to cloud node.",
       );
+    }
+  };
+
+  // 🏛️ Live Audit Reconciliation Click Handler
+  const handleAuditTransaction = async (
+    contributionId: string,
+    status: "VERIFIED" | "REJECTED",
+    rawNotes: string,
+  ) => {
+    setError("");
+    setProcessingId(contributionId);
+
+    // Dynamic extraction: look inside the note string to parse out student identifiers (like DSB-041)
+    let detectedStudentCode = "";
+    const match = rawNotes.match(/DSB-\d+/i);
+    if (match) {
+      detectedStudentCode = match[0].toUpperCase();
+    }
+
+    try {
+      const response = await fetch("/api/verify-contribution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contributionId,
+          status,
+          targetStudentCode: detectedStudentCode || null,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success)
+        throw new Error(data.error || "Reconciliation route mismatch.");
+
+      // Refresh data logs instantly on the view frame without requiring page reloads
+      await fetchDashboardMetrics();
+    } catch (err: any) {
+      setError(err.message || "Failed to finalize database audit parameters.");
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -285,7 +323,7 @@ export default function MainDashboardOverview() {
           </div>
         )}
 
-        {/* TAB 1: OVERVIEW STATUS SCREEN */}
+        {/* TAB 1: OVERVIEW AUDIT SCREEN */}
         {currentTab === "overview" && (
           <div className="space-y-6">
             <div className="space-y-1">
@@ -327,43 +365,110 @@ export default function MainDashboardOverview() {
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               <div className="p-5 border-b border-slate-800 bg-slate-900/50">
                 <h3 className="font-bold text-sm text-white">
-                  Recent Support Registries
+                  Financial Clearance Audit Station
                 </h3>
               </div>
               <div className="overflow-x-auto text-xs">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-500 font-bold bg-slate-950/20">
-                      <th className="p-4">Transaction ID</th>
-                      <th className="p-4">Supporter / CNI</th>
-                      <th className="p-4">Type</th>
-                      <th className="p-4">Channel</th>
-                      <th className="p-4 text-right">Value Specification</th>
+                      <th className="p-4">Reference Token</th>
+                      <th className="p-4">Submission Metadata</th>
+                      <th className="p-4">Method</th>
+                      <th className="p-4">Value (BIF)</th>
+                      <th className="p-4 text-center">Audit Status</th>
+                      <th className="p-4 text-right">Action Gate</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800 font-medium text-slate-300">
-                    {submissions.map((row: any) => (
-                      <tr
-                        key={row.id}
-                        className="hover:bg-slate-800/20 transition-colors"
-                      >
-                        <td className="p-4 font-mono text-[11px] text-amber-500">
-                          {row.id}
-                        </td>
-                        <td className="p-4 font-bold text-white">{row.name}</td>
-                        <td className="p-4">
-                          <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] font-bold">
-                            {row.type}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono text-[11px]">
-                          {row.method}
-                        </td>
-                        <td className="p-4 text-right font-bold text-slate-200">
-                          {row.amount}
-                        </td>
-                      </tr>
-                    ))}
+                    {submissions.map((row: any) => {
+                      const status = row.verification_status || "PENDING";
+                      const isProcessing = processingId === row.id;
+
+                      return (
+                        <tr
+                          key={row.id}
+                          className="hover:bg-slate-800/20 transition-colors"
+                        >
+                          <td className="p-4 font-mono text-[11px] text-amber-500 max-w-[120px] truncate">
+                            {row.transaction_reference || row.id}
+                          </td>
+                          <td className="p-4 text-white max-w-[220px] truncate">
+                            <span className="block font-bold">
+                              {row.notes
+                                ?.split(" - ")[1]
+                                ?.replace("Name: ", "") ||
+                                "Anonymous Submitter"}
+                            </span>
+                            <span className="block text-[10px] text-slate-500 truncate">
+                              {row.notes || "No metadata flags compiled."}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] font-bold uppercase">
+                              {row.payment_method || row.type}
+                            </span>
+                          </td>
+                          <td className="p-4 font-bold text-slate-200">
+                            {parseInt(
+                              row.amount_fbu || row.amount || 0,
+                            ).toLocaleString()}{" "}
+                            FBU
+                          </td>
+                          <td className="p-4 text-center">
+                            <span
+                              className={`px-2 py-1 rounded-full text-[9px] font-black tracking-wider uppercase ${
+                                status === "VERIFIED"
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : status === "REJECTED"
+                                    ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                                    : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              }`}
+                            >
+                              {status}
+                            </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            {status === "PENDING" ? (
+                              <div className="flex justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={isProcessing}
+                                  onClick={() =>
+                                    handleAuditTransaction(
+                                      row.id,
+                                      "VERIFIED",
+                                      row.notes || "",
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 text-slate-950 font-extrabold text-[10px] rounded uppercase tracking-wider transition-colors cursor-pointer"
+                                >
+                                  {isProcessing ? "..." : "Approve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isProcessing}
+                                  onClick={() =>
+                                    handleAuditTransaction(
+                                      row.id,
+                                      "REJECTED",
+                                      row.notes || "",
+                                    )
+                                  }
+                                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-red-950 hover:text-red-400 border border-slate-700 hover:border-red-900 disabled:bg-slate-800 text-slate-300 font-extrabold text-[10px] rounded uppercase tracking-wider transition-all cursor-pointer"
+                                >
+                                  {isProcessing ? "..." : "Reject"}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-600 font-bold italic pr-2">
+                                Reconciled
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -423,7 +528,7 @@ export default function MainDashboardOverview() {
           </div>
         )}
 
-        {/* TAB 3: LIVE GRADING SPREADSHEET WORKSTATION */}
+        {/* TAB 3: GRADING WORKSTATION */}
         {currentTab === "grades" && (
           <div className="space-y-6">
             <div className="space-y-1">
@@ -444,7 +549,6 @@ export default function MainDashboardOverview() {
             )}
 
             <div className="flex flex-col lg:flex-row gap-6">
-              {/* Left Column: Student Navigation Roster */}
               <div className="w-full lg:w-72 bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3 h-fit flex-shrink-0">
                 <h3 className="text-[11px] font-black uppercase tracking-wider text-slate-500">
                   Campus Student Roster
@@ -476,7 +580,6 @@ export default function MainDashboardOverview() {
                 )}
               </div>
 
-              {/* Right Column: Dynamic Interactive Grading Sheet Form */}
               {selectedStudent && (
                 <form
                   onSubmit={handleSaveReportCard}
@@ -494,7 +597,6 @@ export default function MainDashboardOverview() {
                     </div>
                   </div>
 
-                  {/* The Marks Spreadsheet Data Table */}
                   <div className="overflow-x-auto border border-slate-800 rounded-xl">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
@@ -517,7 +619,6 @@ export default function MainDashboardOverview() {
                         {coreSubjects.map((subject) => {
                           const testVal = editMarks[subject]?.test ?? "";
                           const examVal = editMarks[subject]?.exam ?? "";
-                          // Immediate real-time client-side preview calculations
                           const liveTotal =
                             testVal === "" && examVal === ""
                               ? 0
@@ -586,7 +687,6 @@ export default function MainDashboardOverview() {
                     </table>
                   </div>
 
-                  {/* Teacher Comments Section */}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
                       General Faculty Comments
@@ -600,7 +700,6 @@ export default function MainDashboardOverview() {
                     />
                   </div>
 
-                  {/* Action Save Button */}
                   <div className="flex justify-end pt-2">
                     <button
                       type="submit"
