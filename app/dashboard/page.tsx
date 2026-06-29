@@ -173,6 +173,11 @@ export default function MainDashboardOverview() {
     status: "VERIFIED" | "REJECTED",
     rawNotes: string,
   ) => {
+    if (!contributionId) {
+      setError("Cannot execute audit: Missing database row identifier.");
+      return;
+    }
+
     setError("");
     setProcessingId(contributionId);
 
@@ -188,8 +193,8 @@ export default function MainDashboardOverview() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contributionId,
-          status,
+          contributionId: contributionId,
+          status: status,
           targetStudentCode: detectedStudentCode || null,
         }),
       });
@@ -382,23 +387,29 @@ export default function MainDashboardOverview() {
                   </thead>
                   <tbody className="divide-y divide-slate-800 font-medium text-slate-300">
                     {submissions.map((row: any) => {
+                      // Explicit protective check fallback values to capture the Postgres unique row hash
+                      const targetId =
+                        row.id || row.contributionId || row.studentUuid;
                       const status = row.verification_status || "PENDING";
-                      const isProcessing = processingId === row.id;
+                      const isProcessing = processingId === targetId;
 
                       return (
                         <tr
-                          key={row.id}
+                          key={targetId}
                           className="hover:bg-slate-800/20 transition-colors"
                         >
                           <td className="p-4 font-mono text-[11px] text-amber-500 max-w-[120px] truncate">
-                            {row.transaction_reference || row.id}
+                            {row.transaction_reference || "REG-LOG"}
                           </td>
                           <td className="p-4 text-white max-w-[220px] truncate">
                             <span className="block font-bold">
-                              {row.notes
-                                ?.split(" - ")[1]
-                                ?.replace("Name: ", "") ||
-                                "Anonymous Submitter"}
+                              {row.notes?.includes("Name:")
+                                ? row.notes
+                                    .split(" - ")
+                                    .find((s: string) => s.startsWith("Name:"))
+                                    ?.replace("Name:", "")
+                                    .trim()
+                                : "Tuition Entry"}
                             </span>
                             <span className="block text-[10px] text-slate-500 truncate">
                               {row.notes || "No metadata flags compiled."}
@@ -406,14 +417,11 @@ export default function MainDashboardOverview() {
                           </td>
                           <td className="p-4">
                             <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] font-bold uppercase">
-                              {row.payment_method || row.type}
+                              {row.payment_method || "CASH"}
                             </span>
                           </td>
                           <td className="p-4 font-bold text-slate-200">
-                            {parseInt(
-                              row.amount_fbu || row.amount || 0,
-                            ).toLocaleString()}{" "}
-                            FBU
+                            {parseInt(row.amount_fbu || 0).toLocaleString()} FBU
                           </td>
                           <td className="p-4 text-center">
                             <span
@@ -436,7 +444,7 @@ export default function MainDashboardOverview() {
                                   disabled={isProcessing}
                                   onClick={() =>
                                     handleAuditTransaction(
-                                      row.id,
+                                      targetId,
                                       "VERIFIED",
                                       row.notes || "",
                                     )
@@ -450,7 +458,7 @@ export default function MainDashboardOverview() {
                                   disabled={isProcessing}
                                   onClick={() =>
                                     handleAuditTransaction(
-                                      row.id,
+                                      targetId,
                                       "REJECTED",
                                       row.notes || "",
                                     )
