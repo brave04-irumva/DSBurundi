@@ -56,7 +56,6 @@ export default function MainDashboardOverview() {
     }
   }
 
-  // Load active grading ledger roster states dynamically when entering the grades context view
   useEffect(() => {
     if (currentTab === "grades") {
       fetchGradingRoster();
@@ -167,21 +166,19 @@ export default function MainDashboardOverview() {
     }
   };
 
-  // 🏛️ Live Audit Reconciliation Click Handler
   const handleAuditTransaction = async (
     contributionId: string,
     status: "VERIFIED" | "REJECTED",
     rawNotes: string,
   ) => {
     if (!contributionId) {
-      setError("Cannot execute audit: Missing database row identifier.");
+      setError("Cannot clear row: missing database entry key reference.");
       return;
     }
 
     setError("");
     setProcessingId(contributionId);
 
-    // Dynamic extraction: look inside the note string to parse out student identifiers (like DSB-041)
     let detectedStudentCode = "";
     const match = rawNotes.match(/DSB-\d+/i);
     if (match) {
@@ -201,12 +198,27 @@ export default function MainDashboardOverview() {
 
       const data = await response.json();
       if (!response.ok || !data.success)
-        throw new Error(data.error || "Reconciliation route mismatch.");
+        throw new Error(data.error || "Verification pipeline returned error.");
 
-      // Refresh data logs instantly on the view frame without requiring page reloads
-      await fetchDashboardMetrics();
+      // CRITICAL DATA COHESION FIX: Permanently lock row changes into local state arrays using the exact database return payload
+      if (data.updatedRecord) {
+        setSubmissions((prev: any) =>
+          prev.map((sub: any) =>
+            sub.id === contributionId ? data.updatedRecord : sub,
+          ),
+        );
+
+        // Dynamically increment the upper grid summary counters instantly
+        setMetrics((prev: any) => ({
+          ...prev,
+          verifiedTuitionClearances:
+            status === "VERIFIED"
+              ? prev.verifiedTuitionClearances + 1
+              : prev.verifiedTuitionClearances,
+        }));
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to finalize database audit parameters.");
+      setError(err.message || "Failed to update audit log state parameters.");
     } finally {
       setProcessingId(null);
     }
@@ -266,7 +278,7 @@ export default function MainDashboardOverview() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row font-sans">
-      {/* 🧭 LEFT SIDEBAR CONTROL PANEL */}
+      {/* 🧭 SIDEBAR PANEL */}
       <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-r border-slate-800 flex flex-col justify-between p-6 flex-shrink-0 md:h-screen md:sticky md:top-0">
         <div className="space-y-8">
           <div className="space-y-1">
@@ -320,7 +332,7 @@ export default function MainDashboardOverview() {
         </div>
       </aside>
 
-      {/* 🖥️ MAIN WORKSPACE VIEWPORT */}
+      {/* 🖥️ MAIN VIEWPORT CONTAINER */}
       <main className="flex-grow p-6 md:p-10 space-y-8 overflow-y-auto max-h-screen">
         {error && (
           <div className="p-3.5 bg-red-950/40 text-red-400 border border-red-900/50 rounded-xl font-bold text-xs">
@@ -328,7 +340,7 @@ export default function MainDashboardOverview() {
           </div>
         )}
 
-        {/* TAB 1: OVERVIEW AUDIT SCREEN */}
+        {/* TAB 1: SUMMARY STATION AND LEDGER */}
         {currentTab === "overview" && (
           <div className="space-y-6">
             <div className="space-y-1">
@@ -387,9 +399,7 @@ export default function MainDashboardOverview() {
                   </thead>
                   <tbody className="divide-y divide-slate-800 font-medium text-slate-300">
                     {submissions.map((row: any) => {
-                      // Explicit protective check fallback values to capture the Postgres unique row hash
-                      const targetId =
-                        row.id || row.contributionId || row.studentUuid;
+                      const targetId = row.id;
                       const status = row.verification_status || "PENDING";
                       const isProcessing = processingId === targetId;
 
@@ -399,7 +409,7 @@ export default function MainDashboardOverview() {
                           className="hover:bg-slate-800/20 transition-colors"
                         >
                           <td className="p-4 font-mono text-[11px] text-amber-500 max-w-[120px] truncate">
-                            {row.transaction_reference || "REG-LOG"}
+                            {row.transaction_reference || "REG-SLIP"}
                           </td>
                           <td className="p-4 text-white max-w-[220px] truncate">
                             <span className="block font-bold">
@@ -409,7 +419,7 @@ export default function MainDashboardOverview() {
                                     .find((s: string) => s.startsWith("Name:"))
                                     ?.replace("Name:", "")
                                     .trim()
-                                : "Tuition Entry"}
+                                : "Tuition Payment"}
                             </span>
                             <span className="block text-[10px] text-slate-500 truncate">
                               {row.notes || "No metadata flags compiled."}
@@ -484,7 +494,7 @@ export default function MainDashboardOverview() {
           </div>
         )}
 
-        {/* TAB 2: GALLERY VAULT SCREEN */}
+        {/* TAB 2: STORAGE UPLOADS */}
         {currentTab === "vault" && (
           <div className="space-y-6">
             <div className="space-y-1">
@@ -536,7 +546,7 @@ export default function MainDashboardOverview() {
           </div>
         )}
 
-        {/* TAB 3: GRADING WORKSTATION */}
+        {/* TAB 3: GRADING MATRIX */}
         {currentTab === "grades" && (
           <div className="space-y-6">
             <div className="space-y-1">

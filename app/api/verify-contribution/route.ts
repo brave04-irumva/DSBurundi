@@ -11,7 +11,7 @@ export async function POST(request: Request) {
 
     if (!contributionId || !status) {
       return NextResponse.json(
-        { success: false, error: "Missing required processing tokens." },
+        { success: false, error: "Missing required processing parameters." },
         { status: 400 },
       );
     }
@@ -30,27 +30,28 @@ export async function POST(request: Request) {
       },
     );
 
-    // Grab authenticated session context metrics to see which admin staff member is signing off
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // Execute atomic log update statement downstream
-    const { error: updateError } = await supabase
+    // Force the update and cleanly return the updated record object array straight to the client
+    const { data, error: updateError } = await supabase
       .from("contributions")
       .update({
         verification_status: status,
         student_id_code: targetStudentCode || null,
         reviewed_by: user?.id || null,
       })
-      .eq("id", contributionId);
+      .eq("id", contributionId)
+      .select();
 
     if (updateError) throw updateError;
 
     return NextResponse.json(
       {
         success: true,
-        message: "Transaction audited and balance rules synchronized.",
+        message: "Ledger status updated successfully.",
+        updatedRecord: data && data.length > 0 ? data[0] : null,
       },
       { status: 200 },
     );
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to finalize verification parameters.",
+        error: error.message || "Failed to finalize database audit.",
       },
       { status: 500 },
     );
